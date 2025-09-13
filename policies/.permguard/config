@@ -1,0 +1,20 @@
+
+[core]
+  client-version = "none"
+
+[ledger]
+
+  [ledger."origin/245829639912/tntsocial"]
+    head = true
+    ledgerid = "33c9ff3eb77e4e1597410014b8449abc"
+    ledgername = "tntsocial"
+    ref = "refs/remotes/origin/245829639912/33c9ff3eb77e4e1597410014b8449abc"
+    remote = "origin"
+    zoneid = 245829639912
+
+[remote]
+
+  [remote.origin]
+    papport = 9092
+    server = "localhost"
+    zapport = 9091
