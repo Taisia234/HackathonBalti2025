@@ -1,62 +1,69 @@
-from permguard.az.azreq.builder_principal import PrincipalBuilder
-from permguard.az.azreq.builder_request_atomic import AZAtomicRequestBuilder
-from permguard.az_client import AZClient
-from permguard.az_config import with_endpoint
+# app.py
+from flask import Flask, request, jsonify
+from users import register_user, authenticate_user
+from posts import create_post, view_posts, update_post, delete_post
+from auth import is_authorized
 
+app = Flask(__name__)
 
-az_client = AZClient(with_endpoint("localhost", 9094))
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    success = register_user(data["email"], data["password"])
+    if success:
+        return jsonify({"message": "✅ Registered successfully"})
+    return jsonify({"error": "User already exists"}), 400
 
-principal = PrincipalBuilder("ivan.smith@gmail.com").build()
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    if authenticate_user(data["email"], data["password"]):
+        return jsonify({"message": "✅ Login successful"})
+    return jsonify({"error": "Invalid credentials"}), 401
 
-entities = [
-    {
-        "uid": {"type": "TNTSocial::Platform::Post", "id": "post"},
-        "attrs": {"active": True},
-        "parents": [],
-    }
-]
+@app.route("/create", methods=["POST"])
+def create():
+    email = request.headers.get("X-User-Email")
+    post_id = request.json.get("post_id")
+    content = request.json.get("content")
+    ok, _ = is_authorized(email, "create", post_id)
+    if ok:
+        post = create_post(post_id, content)
+        return jsonify(post)
+    return jsonify({"error": "❌ Unauthorized"}), 403
 
-req = (
-    AZAtomicRequestBuilder(
-        245829639912,
-        "33c9ff3eb77e4e1597410014b8449abc",
-        "platform-moderator",
-        "TNTSocial::Platform::Post",
-        "TNTSocial::Platform::Action::delete",
-    )
-    .with_request_id("1234")
-    .with_principal(principal)
-    .with_entities_items("cedar", entities)
-    .with_subject_role_actor_type()
-    .with_subject_source("keycloack")
-    .with_subject_property("isSuperUser", True)
-    .with_resource_id("e3a786fd07e24bfa95ba4341d3695ae8")
-    .with_resource_property("isEnabled", True)
-    .with_action_property("isEnabled", True)
-    .with_context_property("time", "2025-01-23T16:17:46+00:00")
-    .with_context_property("isPostActive", True)
-    .build()
-)
+@app.route("/view", methods=["GET"])
+def view():
+    email = request.headers.get("X-User-Email")
+    ok, _ = is_authorized(email, "view")
+    if ok:
+        return jsonify(view_posts())
+    return jsonify({"error": "❌ Unauthorized"}), 403
 
-ok, response = az_client.check(req)
+@app.route("/update", methods=["PUT"])
+def update():
+    email = request.headers.get("X-User-Email")
+    post_id = request.json.get("post_id")
+    content = request.json.get("content")
+    ok, _ = is_authorized(email, "update", post_id)
+    if ok:
+        post = update_post(post_id, content)
+        if post:
+            return jsonify(post)
+        return jsonify({"error": "Post not found"}), 404
+    return jsonify({"error": "❌ Unauthorized"}), 403
 
-if ok:
-    print("✅ authorization permitted")
-else:
-    print("❌ authorization denied")
-    if response and response.context:
-        if response.context.reason_admin:
-            print(f"-> reason admin: {response.context.reason_admin.message}")
-        if response.context.reason_user:
-            print(f"-> reason user: {response.context.reason_user.message}")
-        for eval in response.evaluations:
-            if eval.context and eval.context.reason_user:
-                print(f"-> reason admin: {eval.context.reason_admin.message}")
-                print(f"-> reason user: {eval.context.reason_user.message}")
-    if response and response.evaluations:
-        for eval in response.evaluations:
-            if eval.context:
-                if eval.context.reason_admin:
-                    print(f"-> evaluation requestid {eval.request_id}: reason admin: {eval.context.reason_admin.message}")
-                if eval.context.reason_user:
-                    print(f"-> evaluation requestid {eval.request_id}: reason user: {eval.context.reason_user.message}")
+@app.route("/delete", methods=["DELETE"])
+def delete():
+    email = request.headers.get("X-User-Email")
+    post_id = request.json.get("post_id")
+    ok, _ = is_authorized(email, "delete", post_id)
+    if ok:
+        post = delete_post(post_id)
+        if post:
+            return jsonify({"message": "✅ Post deleted"})
+        return jsonify({"error": "Post not found"}), 404
+    return jsonify({"error": "❌ Unauthorized"}), 403
+
+if __name__ == "__main__":
+    app.run(debug=True)
